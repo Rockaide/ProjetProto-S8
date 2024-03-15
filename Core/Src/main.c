@@ -46,10 +46,13 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 
-uint16_t freq;
+#define TIMCLK 90000000;
+#define PSC 90;
+
+double freq;
 uint16_t periode[2];
 uint16_t lecture_ok;
-uint16_t capacite;
+double capacite;
 uint8_t i = 0;
 
 /* USER CODE END PV */
@@ -59,9 +62,8 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_USART2_UART_Init(void);
-void Aff_freq(void);
 /* USER CODE BEGIN PFP */
-
+void Aff_freq(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -107,8 +109,12 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    /* USER CODE END WHILE */
+	  TIM1->CCR1 = 50;
+	  HAL_TIM_IC_Start_IT(&htim2, TIM_CHANNEL_1);
 	  Aff_freq();
+
+    /* USER CODE END WHILE */
+
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
@@ -129,7 +135,9 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL4;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -139,7 +147,7 @@ void SystemClock_Config(void)
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
@@ -283,22 +291,15 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-
-/* USER CODE END 4 */
-
-/**
-  * @brief  This function is executed in case of error occurrence.
-  * @retval None
-  */
-
 void Aff_freq(void)
 {
 	if(lecture_ok == 1)
 	{
-		freq = 1/(periode[1]-periode[2]);
+		freq = 1/(periode[1]-periode[0]);
 		capacite = 1/(2*3.14*freq*93.75);
-		HAL_UART_Transmit(&huart2, freq, sizeof(freq), 1);
-		HAL_UART_Transmit(&huart2, capacite, sizeof(capacite), 1);
+		//HAL_UART_Transmit(&huart2, freq, sizeof(freq), 1);
+		HAL_Delay(1000);
+		//HAL_UART_Transmit(&huart2, capacite, sizeof(capacite), 1);
 		lecture_ok=0;
 	}
 }
@@ -324,7 +325,12 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
 	}
 
 }
+/* USER CODE END 4 */
 
+/**
+  * @brief  This function is executed in case of error occurrence.
+  * @retval None
+  */
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
