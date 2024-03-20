@@ -18,6 +18,8 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include <stdio.h>
+#include <inttypes.h>
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -49,11 +51,16 @@ UART_HandleTypeDef huart2;
 #define TIMCLK 90000000;
 #define PSC 90;
 
-double freq;
-uint16_t periode[2];
-uint16_t lecture_ok;
-double capacite;
+volatile uint32_t freq;
+uint32_t asservissement[2] = {0,0};
+
+uint32_t DeltaF = 0;
+uint32_t Overflow = 0;
+uint8_t lecture_ok = 0;
+volatile uint32_t temps = 0;
+volatile uint32_t capacite;
 uint8_t i = 0;
+char Text[60];
 
 /* USER CODE END PV */
 
@@ -102,6 +109,7 @@ int main(void)
   MX_TIM2_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
+  HAL_TIM_IC_Start_IT(&htim2, TIM_CHANNEL_1);
 
   /* USER CODE END 2 */
 
@@ -110,8 +118,7 @@ int main(void)
   while (1)
   {
 	  TIM1->CCR1 = 50;
-	  HAL_TIM_IC_Start_IT(&htim2, TIM_CHANNEL_1);
-	  Aff_freq();
+//	  Aff_freq();
 
     /* USER CODE END WHILE */
 
@@ -183,7 +190,7 @@ static void MX_TIM2_Init(void)
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim2.Init.Period = 4294967295;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
   {
     Error_Handler();
@@ -291,40 +298,51 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void Aff_freq(void)
-{
-	if(lecture_ok == 1)
-	{
-		freq = 1/(periode[1]-periode[0]);
-		capacite = 1/(2*3.14*freq*93.75);
-		//HAL_UART_Transmit(&huart2, freq, sizeof(freq), 1);
-		HAL_Delay(1000);
-		//HAL_UART_Transmit(&huart2, capacite, sizeof(capacite), 1);
-		lecture_ok=0;
-	}
-}
 
+int consecutives = 0;
 void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
 {
-	if(htim->Instance == TIM2)
-	{
-		if(lecture_ok==0)
-		{
-			if(i==0)
-			{
-				periode[0] = HAL_TIM_ReadCapturedValue(&htim2, TIM_CHANNEL_1);
-				i++;
+	asservissement[i]=(uint32_t) HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_1);
+	i++;
+	temps++;
+		if(i == 2){
+			if(asservissement[1] > asservissement[0]){
+					DeltaF = asservissement[1] - asservissement[0];
 			}
-			else
-			{
-				periode[1] = HAL_TIM_ReadCapturedValue(&htim2, TIM_CHANNEL_1);
-				i=0;
-				lecture_ok=1;
+			if(asservissement[1] < asservissement[0]){
+				DeltaF = (4294967295 - asservissement[0]) + asservissement[1];
 			}
-		}
+				freq =  HAL_RCC_GetPCLK1Freq()/DeltaF;//4*64000000/((htim->Init.Prescaler + 1)/DeltaF);//1/(asservissement[1]-asservissement[0]);
+				if((freq > 0)){
+				consecutives++;
+				capacite = 1/(2*3.14*freq*93.75);
+				Overflow = 0;
+				//sprintf(Text, "Frequence = %"PRIu32" Hz\n Temps = %"PRIu32"\n", freq, temps);
+				//HAL_UART_Transmit(&huart2, freq, sizeof(freq), 1);
+			//	HAL_Delay(1000);
+				//HAL_UART_Transmit(&huart2,Text, sizeof(Text), 1000);
+
+				/* Example: Plot two values */
+				sprintf(Text, "$%"PRIu32";", freq);
+				HAL_UART_Transmit(&huart2,Text, sizeof(Text), 1000);
+				}
+
+				else{
+					/*sprintf(Text, "Consec: %d", consecutives);
+					HAL_UART_Transmit(&huart2,Text, sizeof(Text), 1000);
+					consecutives = 0;*/
+				}
+
+				__HAL_TIM_SET_COUNTER(htim,0);
+				i = 0;
+
+			}
 	}
 
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim){
+  Overflow++;
 }
+
 /* USER CODE END 4 */
 
 /**
