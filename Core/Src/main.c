@@ -20,6 +20,7 @@
 #include "main.h"
 #include <stdio.h>
 #include <inttypes.h>
+#include <string.h>
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -53,7 +54,15 @@ UART_HandleTypeDef huart2;
 
 volatile uint32_t freq;
 uint32_t asservissement[2] = {0,0};
+uint32_t min_global = 1000000;
+uint32_t curr_minimum = 100000;
+uint32_t score = 0;
+int reset_counter = 0;
 
+int mesure_begin = 0;
+int avgcount = 0;
+uint32_t avgFreq = 0;
+uint32_t tempavgFreq = 0;
 uint32_t DeltaF = 0;
 uint32_t Overflow = 0;
 uint8_t lecture_ok = 0;
@@ -91,7 +100,8 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  HAL_Init();
+
+	HAL_Init();
 
   /* USER CODE BEGIN Init */
 
@@ -313,25 +323,42 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
 				DeltaF = (4294967295 - asservissement[0]) + asservissement[1];
 			}
 				freq =  HAL_RCC_GetPCLK1Freq()/DeltaF;//4*64000000/((htim->Init.Prescaler + 1)/DeltaF);//1/(asservissement[1]-asservissement[0]);
-				if((freq > 0)){
-				consecutives++;
-				capacite = 1/(2*3.14*freq*93.75);
-				Overflow = 0;
-				//sprintf(Text, "Frequence = %"PRIu32" Hz\n Temps = %"PRIu32"\n", freq, temps);
-				//HAL_UART_Transmit(&huart2, freq, sizeof(freq), 1);
+				if(freq > 0){
+					if(!lecture_ok){
+						avgFreq += freq;
+						avgcount++;
+							if(min_global > freq){
+								min_global = freq;
+							}
+							if(avgcount >= 1000){
+								lecture_ok = 1;
+								tempavgFreq = avgFreq/1000;
+								avgFreq = tempavgFreq;
+							}
+					}
+					if(mesure_begin == 1){
+						reset_counter++;
+					}
+					if((freq < min_global) && (freq < curr_minimum)){
+						mesure_begin = 1;
+						curr_minimum = freq;
+						//display message minimum
+						if(reset_counter > 1000){
+							score = avgFreq - curr_minimum;
+							curr_minimum = 100000;
+							mesure_begin = 0;
+						}
+					}
+						//if (print_score)??
+						sprintf(Text, "$%"PRIu32";", freq);
+						HAL_UART_Transmit(&huart2,Text, sizeof(Text), 1000);
+
+					capacite = 1/(2*3.14*freq*93.75);
 			//	HAL_Delay(1000);
-				//HAL_UART_Transmit(&huart2,Text, sizeof(Text), 1000);
 
 				/* Example: Plot two values */
-				sprintf(Text, "$%"PRIu32";", freq);
-				HAL_UART_Transmit(&huart2,Text, sizeof(Text), 1000);
 				}
-
-				else{
-					/*sprintf(Text, "Consec: %d", consecutives);
-					HAL_UART_Transmit(&huart2,Text, sizeof(Text), 1000);
-					consecutives = 0;*/
-				}
+				//if(reset){curr_minimum = 100000;}
 
 				__HAL_TIM_SET_COUNTER(htim,0);
 				i = 0;
